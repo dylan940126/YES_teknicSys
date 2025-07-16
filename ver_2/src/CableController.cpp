@@ -3,9 +3,11 @@
 #include <fstream>
 #include <thread>
 #include <assert.h>
-#include <Windows.h>
-#include <conio.h>
 #include <queue>
+#include <chrono>
+#include <limits>
+
+using namespace std;
 
 CableController::CableController(bool isOnline, bool useCable){ 
     this->motorNode = TeknicNode(isOnline);
@@ -15,7 +17,7 @@ CableController::CableController(bool isOnline, bool useCable){
 void CableController::Connect(int cableNumber){
     if(!this->useCable) return;
     this->cableNumber = cableNumber;
-    this->logger.OpenFile("log\\trq.log");
+    this->logger.OpenFile("log/trq.log");
     if(!this->motorNode.Connect(cableNumber)){
         cout << "Failed to connect cable motors. Exit programme." << endl;
         this->isConnected = false;
@@ -52,7 +54,11 @@ void CableController::SetCableTrqByIndex(int index, float targetTrq, float toler
                 // get current trq
                 currentTrq = motorNode.GetTrqMeasured(index);
                 cout << "motor: " << index << ": " << currentTrq << "       " << endl;
-                if(kbhit()){
+                cout << "Press Enter to stop..." << endl;
+                
+                // Check for user input (non-blocking)
+                if(cin.rdbuf()->in_avail() > 0) {
+                    cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                     motorNode.StopNode(index);
                     break;
                 }
@@ -112,7 +118,10 @@ void CableController::SetCableTrq(float targetTrq, float tolerance){
                 }
                 logger.LogInfo(log);
             }
-            if(kbhit()){
+            
+            // Check for user input (non-blocking)
+            if(cin.rdbuf()->in_avail() > 0) {
+                cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                 moving = false;
                 break;
             }

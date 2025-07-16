@@ -1,4 +1,3 @@
-#pragma comment(lib, "User32.lib")
 #include "../include/Logger.h"
 #include "../include/Robot.h"
 #include "../include/TrajectoryGenerator.h"
@@ -7,11 +6,30 @@
 #include <fstream>
 #include "../tools/json.hpp"
 #include "../include/utils.h"
-
-#pragma comment(lib, "ws2_32.lib")
+// Add cross-platform networking standard library
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+// Cross-platform input control
+#include <termios.h>
+#include <limits>
 
 using json = nlohmann::json;
 using namespace std;
+
+// Cross-platform keyboard check function
+bool CheckKeyPressed(char key) {
+    // This simple implementation reads a single character in a non-blocking manner
+    if (std::cin.rdbuf()->in_avail() > 0) {
+        char c = std::cin.get();
+        if (c == key) {
+            return true;
+        } else {
+            std::cin.putback(c);
+        }
+    }
+    return false;
+}
 
 string userInput;
 Robot robot;
@@ -43,15 +61,9 @@ void DrawBricksASCII(int brickType){
 
 void ClearConsoleInputBuffer()
 {
-    // If you happen to have any trouble clearing already cleared buffer, uncomment the section below.
-    /* keybd_event('S', 0, 0, 0);
-    keybd_event('S', 0,KEYEVENTF_KEYUP, 0);
-    keybd_event(VK_BACK, 0, 0, 0);
-    keybd_event(VK_BACK, 0,KEYEVENTF_KEYUP, 0); */
-    PINPUT_RECORD ClearingVar1 = new INPUT_RECORD[256];
-    DWORD ClearingVar2;
-    ReadConsoleInput(GetStdHandle(STD_INPUT_HANDLE),ClearingVar1,256,&ClearingVar2);
-    delete[] ClearingVar1;
+    // Cross-platform clear of standard input buffer
+    std::cin.clear();
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
 
 void PrintGripperControlMenu(){
@@ -76,10 +88,10 @@ void GripperControlMode(){
             cout << "Bye" << endl;
             break;
         }else if(userInput == "1"){
-            robot.gripper.Close();
+            robot.gripper->Close();
             system("pause");
         }else if(userInput == "2"){
-            robot.gripper.Open();
+            robot.gripper->Open();
             system("pause");
         }else if(userInput == "3"){
             while(true){
@@ -93,7 +105,7 @@ void GripperControlMode(){
                     char* p;
                     int angle = strtol(userInput.c_str(), &p, 10);
                     if(!*p) {
-                        robot.gripper.SetCalibrateStartAngle(angle);
+                        robot.gripper->SetCalibrateStartAngle(angle);
                     }else{
                         cout << "Please enter intager!!!";
                     }
@@ -103,7 +115,7 @@ void GripperControlMode(){
                     char* p;
                     int angle = strtol(userInput.c_str(), &p, 10);
                     if(!*p) {
-                        robot.gripper.SetCalibrateEndAngle(angle);
+                        robot.gripper->SetCalibrateEndAngle(angle);
                     }else{
                         cout << "Please enter intager!!!";
                     }
@@ -111,23 +123,23 @@ void GripperControlMode(){
                     char* p;
                     int angle = strtol(userInput.c_str(), &p, 10);
                     if(!*p) {
-                        robot.gripper.Rotate(angle);
+                        robot.gripper->Rotate(angle);
                     }else{
                         cout << "Please enter intager!!!";
                     }
                 }
             }
         }else if(userInput == "4"){
-            robot.gripper.Release();
+            robot.gripper->Release();
             system("pause");
         }else if(userInput == "5"){
-            robot.gripper.Calibrate();
+            robot.gripper->Calibrate();
             system("pause");
         }else if(userInput == "6"){
-            robot.gripper.Reset();
+            robot.gripper->Reset();
             system("pause");
         }else if(userInput == "7"){
-            robot.gripper.Reconnect();
+            robot.gripper->Reconnect();
             system("pause");
         }
     }
@@ -493,19 +505,19 @@ void RailMotorControlMode(){
             }
         }else if(userInput == "6"){ // Open Selected Rail Brake
             cout << "Opening Rail " << selectedRailMotor << " Brake" << endl;
-            robot.brake.OpenRailBrakeByIndex(selectedRailMotor);
+            robot.brake->OpenRailBrakeByIndex(selectedRailMotor);
             system("pause");
         }else if(userInput == "7"){ // Close Selected Rail Brake
             cout << "Closing Rail " << selectedRailMotor << " Brake" << endl;
-            robot.brake.CloseRailBrakeByIndex(selectedRailMotor);
+            robot.brake->CloseRailBrakeByIndex(selectedRailMotor);
             system("pause");
         }else if(userInput == "8"){ // Open ALL Rail Brake
             cout << "Opening ALL Rail Brake" << endl;
-            robot.brake.OpenAllRailBrake();
+            robot.brake->OpenAllRailBrake();
             system("pause");
         }else if(userInput == "9"){ // Close ALL Rail Brake
             cout << "Closing ALL Rail Brake" << endl;
-            robot.brake.CloseAllRailBrake();
+            robot.brake->CloseAllRailBrake();
             system("pause");
         }
     }
@@ -532,13 +544,20 @@ void RobotPosControlMode(){
     double goalPos[6] = {0};
     int sleepTime = 120;
     int moveTime = 100;
+
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
     while(true){
-        if(GetKeyState('Q') & 0x8000)
+        if(CheckKeyPressed('q') || CheckKeyPressed('Q'))
         {
-            Sleep(100);
+            SleepMs(100);
             ClearConsoleInputBuffer();
             break;
-        }else if(GetKeyState('A') & 0x8000) // +x
+        }else if(CheckKeyPressed('a') || CheckKeyPressed('A')) // +x
         {
             copy(robot.endEffectorPos, robot.endEffectorPos + 6, goalPos);
             goalPos[0] += 0.01;
@@ -546,51 +565,53 @@ void RobotPosControlMode(){
             
             printf("\x1b[7A"); // eepos 7 + press key 1
             robot.PrintEEPos();
-            Sleep(sleepTime);
-        }else if(GetKeyState('D') & 0x8000) // -x
+            SleepMs(sleepTime);
+        }else if(CheckKeyPressed('d') || CheckKeyPressed('D')) // -x
         {
             copy(robot.endEffectorPos, robot.endEffectorPos + 6, goalPos);
             goalPos[0] -= 0.01;
             robot.MoveToLinear(goalPos, moveTime, false, false);
             printf("\x1b[7A"); // eepos 7 + press key 1
             robot.PrintEEPos();
-            Sleep(sleepTime);
-        }else if(GetKeyState('W') & 0x8000) // +y
+            SleepMs(sleepTime);
+        }else if(CheckKeyPressed('w') || CheckKeyPressed('W')) // +y
         {
             copy(robot.endEffectorPos, robot.endEffectorPos + 6, goalPos);
             goalPos[1] += 0.01;
             robot.MoveToLinear(goalPos, moveTime, false, false);
             printf("\x1b[7A"); // eepos 7 + press key 1
             robot.PrintEEPos();
-            Sleep(sleepTime);
-        }else if(GetKeyState('S') & 0x8000) // -y
+            SleepMs(sleepTime);
+        }else if(CheckKeyPressed('s') || CheckKeyPressed('S')) // -y
         {
             copy(robot.endEffectorPos, robot.endEffectorPos + 6, goalPos);
             goalPos[1] -= 0.01;
             robot.MoveToLinear(goalPos, moveTime, false, false);
             printf("\x1b[7A"); // eepos 7 + press key 1
             robot.PrintEEPos();
-            Sleep(sleepTime);
-        }else if(GetKeyState('R') & 0x8000) // +z
+            SleepMs(sleepTime);
+        }else if(CheckKeyPressed('r') || CheckKeyPressed('R')) // +z
         {
             copy(robot.endEffectorPos, robot.endEffectorPos + 6, goalPos);
             goalPos[2] += 0.01;
             robot.MoveToLinear(goalPos, moveTime, false, false);
             printf("\x1b[7A"); // eepos 7 + press key 1
             robot.PrintEEPos();
-            Sleep(sleepTime);
-        }else if(GetKeyState('F') & 0x8000) // -z
+            SleepMs(sleepTime);
+        }else if(CheckKeyPressed('f') || CheckKeyPressed('F')) // -z
         {
             copy(robot.endEffectorPos, robot.endEffectorPos + 6, goalPos);
             goalPos[2] -= 0.01;
             robot.MoveToLinear(goalPos, moveTime, false, false);
             printf("\x1b[7A"); // eepos 7 + press key 1
             robot.PrintEEPos();
-            Sleep(sleepTime);
+            SleepMs(sleepTime);
         }else{
-            Sleep(sleepTime);
+            SleepMs(sleepTime);
         }
     }
+    
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
 }
 
 void PrintRailControlMenu(int selectedRail){
@@ -696,33 +717,33 @@ void RobotControlMode(){
         if(userInput == "q"){ // back to last page
             break;
         }else if(userInput == "1"){ // robot position control mode
-            // robot.brake.OpenAllCableBrake();
+            // robot.brake->OpenAllCableBrake();
             RobotPosControlMode();
-            // robot.brake.CloseAllCableBrake();
+            // robot.brake->CloseAllCableBrake();
         }else if(userInput == "2"){ // move robot to home position
             robot.PrintHomePos();
-            // robot.brake.OpenAllCableBrake();
+            // robot.brake->OpenAllCableBrake();
             robot.MoveToParaBlend(robot.homePos, true);
-            // robot.brake.CloseAllCableBrake();
+            // robot.brake->CloseAllCableBrake();
             system("pause");
         }else if(userInput == "3"){ // move robot to pre-pickup position
             // robot.PrintPrePickupPos();
-            // robot.brake.OpenAllCableBrake();
+            // robot.brake->OpenAllCableBrake();
             double goalPos[6] = {0};
             copy(robot.brickPickUpPos, robot.brickPickUpPos + 6, goalPos);
             goalPos[5] = 0.0141; // calculated yaw for +0.21 height
             goalPos[2] += 0.21; // 0.21 safe height from ABB
             robot.MoveToParaBlend(goalPos, true);
-            // robot.brake.CloseAllCableBrake();
+            // robot.brake->CloseAllCableBrake();
             system("pause");
         }else if(userInput == "4"){ // gripper control mode
             GripperControlMode();
         }else if(userInput == "5"){ // Rail Control
-            // robot.brake.OpenAllCableBrake();
-            robot.brake.OpenAllRailBrake();
+            // robot.brake->OpenAllCableBrake();
+            robot.brake->OpenAllRailBrake();
             RailControlMode();
-            // robot.brake.CloseAllCableBrake();
-            robot.brake.CloseAllRailBrake();
+            // robot.brake->CloseAllCableBrake();
+            robot.brake->CloseAllRailBrake();
         }
     }
 }
@@ -767,25 +788,25 @@ void CalibrationMode(){
                     continue;
                 }
                 cout << "Setting to Target Torque: " << targetTrq << endl;
-                // robot.brake.OpenAllCableBrake();
+                // robot.brake->OpenAllCableBrake();
                 robot.cable.SetCableTrq(targetTrq, 4);
-                // robot.brake.CloseAllCableBrake();
+                // robot.brake->CloseAllCableBrake();
             }else{
                 cout << "Please enter a number !!!" << endl;
             }
             system("pause");
         }else if(userInput == "2"){ // requst current torque readings
             cout << "Current Measured Cable Motor Trq: " << endl;
-            // robot.brake.OpenAllCableBrake();
+            // robot.brake->OpenAllCableBrake();
             for(int i = 0; i < robot.GetCableMotorNum(); i++){
                 cout << "\tCable " << i << ": " << robot.cable.GetMotorTorqueMeasured(i) << endl;
             }
-            // robot.brake.CloseAllCableBrake();
+            // robot.brake->CloseAllCableBrake();
             system("pause");
         }else if(userInput == "3"){ // Control Cable Individual
-            // robot.brake.OpenAllCableBrake();
+            // robot.brake->OpenAllCableBrake();
             CableMotorControlMode();
-            // robot.brake.CloseAllCableBrake();
+            // robot.brake->CloseAllCableBrake();
         }else if(userInput == "4"){ // Update Robot Pos By File
             string robotPosPath;
             cout << "Please Enter Robot Position File Path (Default lastPos.txt): ";
@@ -800,14 +821,14 @@ void CalibrationMode(){
             system("pause");
         }else if(userInput == "5"){ // Reset End Effector Rotation to 0,0,0
             double targetPos[6] = { robot.endEffectorPos[0], robot.endEffectorPos[1], robot.endEffectorPos[2], 0, 0, 0 };
-            // robot.brake.OpenAllCableBrake();
+            // robot.brake->OpenAllCableBrake();
             robot.MoveToParaBlend(targetPos, 3500, true);
-            // robot.brake.CloseAllCableBrake();
+            // robot.brake->CloseAllCableBrake();
             system("pause");
         }else if(userInput == "6"){ // Control Linear Rail Motor
-            robot.brake.OpenAllRailBrake();
+            robot.brake->OpenAllRailBrake();
             RailMotorControlMode();
-            robot.brake.CloseAllRailBrake();
+            robot.brake->CloseAllRailBrake();
         }else if(userInput == "7"){ // Control Gripper
             GripperControlMode();
         }else if(userInput == "8"){ // Update Robot Config
@@ -835,42 +856,39 @@ void CalibrationMode(){
         }else if(userInput == "11"){ // Robot Control Mode
             RobotControlMode();
         }else if(userInput == "12"){ // Request Current Position from RPi
-            WSADATA wsaData;
-            if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-                cout << "Failed to initialize Winsock" << endl;
-                return ;
-            }
-
             // Create UDP socket
-            SOCKET udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-            if (udpSocket == INVALID_SOCKET) {
+            int udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            if (udpSocket < 0) {
                 cout << "Failed to create socket" << endl;
                 system("pause");
                 continue;
             }
 
             // Set up server address
-            sockaddr_in serverAddr;
+            struct sockaddr_in serverAddr;
+            memset(&serverAddr, 0, sizeof(serverAddr));
             serverAddr.sin_family = AF_INET;
-            serverAddr.sin_port = htons(robot.RPiPort); // Use appropriate port number
-            serverAddr.sin_addr.s_addr = inet_addr(robot.RPiIP.c_str()); // Use RPi's IP address
+            serverAddr.sin_port = htons(robot.RPiPort); // 使用適當的端口號
+            serverAddr.sin_addr.s_addr = inet_addr(robot.RPiIP.c_str()); // 使用 RPi 的 IP 地址
 
             // Send request
             const char* request = "get_position";
-            if (sendto(udpSocket, request, strlen(request), 0, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+            if (sendto(udpSocket, request, strlen(request), 0, 
+                      (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
                 cout << "Failed to send request" << endl;
-                closesocket(udpSocket);
+                close(udpSocket);
                 system("pause");
             }
 
             // Receive response
             char buffer[1024];
-            int serverAddrLen = sizeof(serverAddr);
-            int bytesReceived = recvfrom(udpSocket, buffer, sizeof(buffer), 0, (sockaddr*)&serverAddr, &serverAddrLen);
+            socklen_t serverAddrLen = sizeof(serverAddr);
+            int bytesReceived = recvfrom(udpSocket, buffer, sizeof(buffer), 0, 
+                                        (struct sockaddr*)&serverAddr, &serverAddrLen);
             
-            if (bytesReceived == SOCKET_ERROR) {
+            if (bytesReceived < 0) {
                 cout << "Failed to receive response" << endl;
-                closesocket(udpSocket);
+                close(udpSocket);
                 system("pause");
                 continue;
             }
@@ -880,7 +898,7 @@ void CalibrationMode(){
             cout << "Received position data: " << buffer << endl;
 
             // Close socket
-            closesocket(udpSocket);
+            close(udpSocket);
             // parse the buffer to json
             json jsonData;
             try{
@@ -970,7 +988,7 @@ void OperationMode(){
             robot.PrintBrickPickUpPos();
             cout << "Speed Limit: " << robot.GetEffVelLmt() << "m/s" << endl;
             double goalPos[6] = {0};
-            robot.brake.OpenAllCableBrake();
+            robot.brake->OpenAllCableBrake();
             double safePt[6] = {8.24, 6.51, -0.6, 0, 0, -0.0237}; // a safe area near to the arm // 0.21 safe height from ABB
             bool stop = false;
             string brickTypes[4] = {"??Should not show this, please check", "holes", "normal", "half"};
@@ -980,8 +998,8 @@ void OperationMode(){
                 vector<double> brickPos = brickPosList[i];
                 brickType = int(brickPos[5]);
                 // Move to pre pick up position
-                robot.gripper.Rotate(90);
-                robot.gripper.Open();
+                robot.gripper->Rotate(90);
+                robot.gripper->Open();
 
                 copy(robot.brickPickUpPos, robot.brickPickUpPos + 6, goalPos);
                 goalPos[5] = 0.0141; // calculated yaw for +0.21 height
@@ -994,10 +1012,10 @@ void OperationMode(){
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
 
-                Sleep(800); // wait for ee to start moving
+                SleepMs(800); // wait for ee to start moving
                 if(!robot.MoveToParaBlend(goalPos, true)) break;
                 
-                Sleep(100); // wait for brick
+                SleepMs(100); // wait for brick
 
                 // lower the ee to pickup brick
                 copy(robot.brickPickUpPos, robot.brickPickUpPos + 6, goalPos);
@@ -1006,12 +1024,12 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT * 1.2, true)) break;
 
-                // Sleep(600); //////////// FOR TESTING ONYL, delete later!!!!!!!!!!!!!!!!!!
-                robot.gripper.Close();
-                Sleep(800); // wait for grippper to close
+                // SleepMs(600); //////////// FOR TESTING ONYL, delete later!!!!!!!!!!!!!!!!!!
+                robot.gripper->Close();
+                SleepMs(800); // wait for grippper to close
 
                 // raise brick
                 copy(robot.brickPickUpPos, robot.brickPickUpPos+6, begin(goalPos));
@@ -1021,7 +1039,7 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(800); // wait for grippper to stop
+                SleepMs(800); // wait for grippper to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
 
                 // move to safe point                
@@ -1031,11 +1049,11 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, true)) break;
 
                 // rotate gripper to target rotation
-                robot.gripper.Rotate((int)(brickPos[4] + 92.2 - brickPos[3]/3.1415965*180)); // <-+27, constant frame to gripper offset; - yaw rotation in EE
+                robot.gripper->Rotate((int)(brickPos[4] + 92.2 - brickPos[3]/3.1415965*180)); // <-+27, constant frame to gripper offset; - yaw rotation in EE
 
                 double safeH = 0.3; // meter, safety height from building brick level
                 // avoid the 5th pole
@@ -1092,7 +1110,7 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(800); // wait for ee to stop
+                SleepMs(800); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, true)) break;
                 
                 // Place brick
@@ -1102,11 +1120,11 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for grippper to stop
+                SleepMs(1000); // wait for grippper to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
 
-                robot.gripper.Open();
-                Sleep(200); //Wait a while after placing brick
+                robot.gripper->Open();
+                SleepMs(200); //Wait a while after placing brick
 
                 // Rise and leave building area
                 goalPos[2] += safeH;
@@ -1115,7 +1133,7 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
 
                 // move to safe point
@@ -1125,7 +1143,7 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(robot.endEffectorPos[2] > safePt[2]){ // if current position is above safe point, then return to point above safe point then lowering z-height
                     goalPos[2] = robot.endEffectorPos[2];
                     if(!robot.MoveToParaBlend(goalPos, true)) break;
@@ -1136,7 +1154,7 @@ void OperationMode(){
                 cout << "----------Completed brick #" << i <<"----------" << endl;
                 if(!CheckContinue()) break;
             }
-            // robot.brake.CloseAllCableBrake();
+            // robot.brake->CloseAllCableBrake();
             system("pause");
         }else if(userInput == "3"){ // read point to point file, gen and run para blend traj
             string ptnFileName;
@@ -1146,11 +1164,11 @@ void OperationMode(){
             vector<vector<double>> pointList = ReadPointFile(ptnFileName != "" ? ptnFileName : "points.csv"); // Read "bricks.csv"
             cout << "The file contains " << pointList.size() << " points." << endl;
             if(!CheckContinue()) continue;
-            // robot.brake.OpenAllCableBrake();
+            // robot.brake->OpenAllCableBrake();
             for(vector<double> point : pointList){
                 if(!robot.MoveToParaBlend(&point[0], true)) break;
             }
-            // robot.brake.CloseAllCableBrake();
+            // robot.brake->CloseAllCableBrake();
             system("pause");
         }else if(userInput == "4"){ // read and run traj file
             string trajFileName;
@@ -1160,10 +1178,10 @@ void OperationMode(){
             vector<vector<double>> trajList = ReadTrajFile(trajFileName != "" ? trajFileName : "traj.csv"); // Read "bricks.csv"
             cout << "The file contains " << trajList.size() << " points." << endl;
             if(!CheckContinue()) continue;
-            // robot.brake.OpenAllCableBrake();
+            // robot.brake->OpenAllCableBrake();
             robot.MoveToParaBlend(&(trajList[0])[0]);
             robot.RunCableTraj(trajList);
-            // robot.brake.CloseAllCableBrake();
+            // robot.brake->CloseAllCableBrake();
             system("pause");
         }else if(userInput == "5"){ // requst current torque readings
             cout << "Current Measured Cable Motor Trq: " << endl;
@@ -1207,15 +1225,15 @@ void OperationMode(){
             robot.PrintBrickPickUpPos();
             cout << "Speed Limit: " << robot.GetEffVelLmt() << "m/s" << endl;
             double goalPos[6] = {0};
-            robot.brake.OpenAllCableBrake();
+            robot.brake->OpenAllCableBrake();
             bool stop = false;
             string brickTypes[4] = {"??Should not show this, please check", "holes", "normal", "half"};
             int brickType = 0;
             for(int i = brickIndex; i < brickPosList.size(); i++){
                 vector<double> brickPos = brickPosList[i];
                 // Move to pre pick up position
-                robot.gripper.Rotate(90);
-                robot.gripper.Open();
+                robot.gripper->Rotate(90);
+                robot.gripper->Open();
 
                 copy(robot.brickPickUpPos, robot.brickPickUpPos + 6, goalPos);
                 goalPos[2] += 0.2; // 0.2 safe height from ABB
@@ -1224,9 +1242,9 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(800); // wait for ee to start moving
+                SleepMs(800); // wait for ee to start moving
                 if(!robot.MoveToParaBlend(goalPos, true)) break;
-                Sleep(100); // wait for brick
+                SleepMs(100); // wait for brick
 
                 // lower the ee to pickup brick
                 copy(robot.brickPickUpPos, robot.brickPickUpPos + 6, goalPos);
@@ -1235,12 +1253,12 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT * 1.2, true)) break;
 
-                // Sleep(600); //////////// FOR TESTING ONYL, delete later!!!!!!!!!!!!!!!!!!
-                robot.gripper.Close();
-                Sleep(800); // wait for grippper to close
+                // SleepMs(600); //////////// FOR TESTING ONYL, delete later!!!!!!!!!!!!!!!!!!
+                robot.gripper->Close();
+                SleepMs(800); // wait for grippper to close
 
                 // raise brick
                 copy(robot.brickPickUpPos, robot.brickPickUpPos+6, begin(goalPos));
@@ -1250,10 +1268,10 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(800); // wait for grippper to stop
+                SleepMs(800); // wait for grippper to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
                 // rotate gripper to target rotation
-                robot.gripper.Rotate((int)(brickPos[4] + 92.2 - brickPos[3]/3.1415965*180)); // <-+27, constant frame to gripper offset; - yaw rotation in EE
+                robot.gripper->Rotate((int)(brickPos[4] + 92.2 - brickPos[3]/3.1415965*180)); // <-+27, constant frame to gripper offset; - yaw rotation in EE
                 double safeH = 0.2; // meter, safety height from building brick level
                 
                 // Go to brick placing position
@@ -1266,7 +1284,7 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(800); // wait for ee to stop
+                SleepMs(800); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, true)) break;
 
                 // Place brick
@@ -1276,11 +1294,11 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for grippper to stop
+                SleepMs(1000); // wait for grippper to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
 
-                robot.gripper.Open();
-                Sleep(200); //Wait a while after placing brick
+                robot.gripper->Open();
+                SleepMs(200); //Wait a while after placing brick
 
                 // Rise and leave building area
                 goalPos[2] += safeH;
@@ -1289,7 +1307,7 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
 
                 // Move down again for pick up
@@ -1299,11 +1317,11 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
-                // Sleep(600); //////////// FOR TESTING ONYL, delete later!!!!!!!!!!!!!!!!!!
-                robot.gripper.Close();
-                Sleep(800); // wait for grippper to close
+                // SleepMs(600); //////////// FOR TESTING ONYL, delete later!!!!!!!!!!!!!!!!!!
+                robot.gripper->Close();
+                SleepMs(800); // wait for grippper to close
 
                 // Rise and leave building area
                 goalPos[2] += safeH;
@@ -1312,7 +1330,7 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
 
                 //move to brick pick up position
@@ -1323,9 +1341,9 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(800); // wait for ee to start moving
+                SleepMs(800); // wait for ee to start moving
                 if(!robot.MoveToParaBlend(goalPos, true)) break;
-                Sleep(100); // wait for brick
+                SleepMs(100); // wait for brick
 
                 // Place brick
                 goalPos[2] -= safeH;
@@ -1334,11 +1352,11 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for grippper to stop
+                SleepMs(1000); // wait for grippper to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
 
-                robot.gripper.Open();
-                Sleep(200); //Wait a while after placing brick
+                robot.gripper->Open();
+                SleepMs(200); //Wait a while after placing brick
 
                 // Rise and leave building area
                 goalPos[2] += safeH;
@@ -1348,7 +1366,7 @@ void OperationMode(){
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
 
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT, true)) break;
 
                 //Move to home position
@@ -1358,7 +1376,7 @@ void OperationMode(){
                 cout << "Pos: " << "x: " << goalPos[0] << " y: " << goalPos[1] << " z: " << goalPos[2] << endl;
                 cout << "Rot: " << "roll: " << goalPos[3] << " pitch: " << goalPos[4] << " yaw: " << goalPos[5] << endl;
                 //if(!CheckContinue()) break;
-                Sleep(1000); // wait for ee to stop
+                SleepMs(1000); // wait for ee to stop
                 if(!robot.MoveToParaBlend(goalPos, robot.safeT * 2, true)) break;
             }
             system("pause");

@@ -1,54 +1,28 @@
-#define WIN32_LEAN_AND_MEAN  // Add this to reduce Windows header conflicts
-#include <windows.h>         // Add this first
-#include <WinSock2.h>
-#include <WS2tcpip.h>
 #include "../include/RailController.h"
 #include "../tools/json.hpp"
 #include <string>
-#include <iostream>  // Add this for std::cout, std::cerr, std::endl
+#include <iostream>
+#include <memory>
+#include <cstring>
+#include <stdexcept>
+#include <boost/asio.hpp>
 
-#pragma comment(lib, "Ws2_32.lib")
-
+using boost::asio::ip::udp;
 using json = nlohmann::json;
 
 class DeltaServer {
 private:
-    SOCKET socket_;
+    boost::asio::io_context io_context_;
+    udp::socket socket_;
     enum { max_length = 65507 }; // Maximum UDP packet size
     char data_[max_length];
     RailController rail;
+    udp::endpoint remote_endpoint_;
 
 public:
-    DeltaServer(unsigned short port) {
-        // Initialize Winsock
-        WSADATA wsaData;
-        if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-            throw std::runtime_error("WSAStartup failed");
-        }
-
-        // Create socket
-        socket_ = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (socket_ == INVALID_SOCKET) {
-            WSACleanup();
-            throw std::runtime_error("Socket creation failed");
-        }
-
-        // Bind socket
-        sockaddr_in serverAddr;
-        serverAddr.sin_family = AF_INET;
-        serverAddr.sin_port = htons(port);
-        serverAddr.sin_addr.s_addr = INADDR_ANY;
-
-        if (::bind(socket_, (SOCKADDR*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-            closesocket(socket_);
-            WSACleanup();
-            throw std::runtime_error("Bind failed");
-        }
-    }
-
-    ~DeltaServer() {
-        closesocket(socket_);
-        WSACleanup();
+    DeltaServer(unsigned short port) 
+        : socket_(io_context_, udp::endpoint(udp::v4(), port)) {
+        std::cout << "Server initialized on port " << port << std::endl;
     }
 
     void start() {
@@ -65,38 +39,39 @@ public:
 
         std::cout << "Server is listening..." << std::endl;
         
-        while (true) {
-            sockaddr_in clientAddr;
-            int clientAddrLen = sizeof(clientAddr);
-
-            int bytesReceived = recvfrom(socket_, 
-                                       data_, 
-                                       max_length, 
-                                       0, 
-                                       (SOCKADDR*)&clientAddr, 
-                                       &clientAddrLen);
-
-            if (bytesReceived == SOCKET_ERROR) {
-                std::cerr << "recvfrom failed: " << WSAGetLastError() << std::endl;
-                continue;
-            }
-
-            try {
-                std::string json_str(data_, bytesReceived);
-                json j = json::parse(json_str);
-                handle_json_message(j);
-            }
-            catch (const json::parse_error& e) {
-                std::cerr << "JSON parsing error: " << e.what() << std::endl;
-            }
-        }
+        do_receive();
+        io_context_.run();
     }
 
 private:
+    void do_receive() {
+        socket_.async_receive_from(
+            boost::asio::buffer(data_, max_length),
+            remote_endpoint_,
+            [this](boost::system::error_code ec, std::size_t bytes_recvd) {
+                if (!ec && bytes_recvd > 0) {
+                    try {
+                        std::string json_str(data_, bytes_recvd);
+                        json j = json::parse(json_str);
+                        handle_json_message(j);
+                    }
+                    catch (const json::parse_error& e) {
+                        std::cerr << "JSON parsing error: " << e.what() << std::endl;
+                    }
+                }
+                else if (ec) {
+                    std::cerr << "Receive error: " << ec.message() << std::endl;
+                }
+                
+                // Setup to receive next message
+                do_receive();
+            });
+    }
+
     void handle_json_message(const json& j) {
         // Example of processing the JSON message
         std::cout << "Received JSON message: " << j.dump(2) << std::endl;
-        try{
+        try {
             int index = j["index"];
             int command = j["command"];
             switch(command) {
@@ -110,7 +85,7 @@ private:
                     std::cout << "Invalid command" << std::endl;
                     break;
             }
-        }catch(const std::exception& e){
+        } catch(const std::exception& e) {
             std::cout << "Error: " << e.what() << std::endl;
         }
     }

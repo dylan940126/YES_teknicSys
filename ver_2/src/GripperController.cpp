@@ -1,4 +1,5 @@
 #include "../include/GripperController.h"
+#include "../include/utils.h"
 #include <iostream>
 #include <assert.h>
 
@@ -6,9 +7,9 @@ float startAngle = -137;
 float endAngle = startAngle + 180;
 float startAngleTmp = startAngle;
 float endAngleTmp = endAngle;
-GripperController::GripperController(bool isOnline, bool useGripper){
-    this->node = COMPortNode(isOnline);
-    this->useGripper = useGripper;
+GripperController::GripperController(bool isOnline, bool useGripper)
+    : node(isOnline), useGripper(useGripper)
+{
 }
 
 void GripperController::Connect(string portName){
@@ -138,7 +139,7 @@ void GripperController::Reconnect(){
     if(!this->useGripper) return;
     this->node.Disconnect();
     cout << "Gripper Controller Offline." << endl;
-    Sleep(1000);
+    SleepMs(1000);
     cout << "Reconnecting Gripper Controller..." << endl;
     if(!this->node.Connect(this->portName)) {
         cout << "Error: Failed to reconnect gripper. \n"; 

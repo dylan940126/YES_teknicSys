@@ -1,7 +1,7 @@
 #ifndef Robot_H
 #define Robot_H
 
-#include "../Dependencies/eigen-3.3.7/Eigen/Dense"
+#include "../Dependencies/common/eigen-3.3.7/Eigen/Dense"
 #include "GripperController.h"
 #include "RailController.h"
 #include "CableController.h"
@@ -10,6 +10,7 @@
 #include "utils.h"
 #include <string>
 #include <vector>
+#include <memory>
 using namespace Eigen;
 using namespace std;
 
@@ -66,8 +67,8 @@ public:
     double brickPrePickUpPos[6]{}; // position at 5th pole for brick pick up with possible z-rotaion
     CableController cable;
     RailController rail;
-    GripperController gripper;
-    BrakeController brake;
+    std::unique_ptr<GripperController> gripper;
+    std::unique_ptr<BrakeController> brake;
     string RPiIP = "192.168.50.138";
     int RPiPort = 5000;
 
@@ -236,7 +237,7 @@ public:
     bool RunCableTraj (vector<vector<double>> trajectory, bool showAtten=true);
     bool MoveToParaBlend(double dest[], int time, bool showAtten=true);
     bool MoveToParaBlend(double dest[], bool showAtten=true);
-    bool MoveToLinear(double dest[], int time, bool showAtten=true, bool useEBrake=true);;
+    bool MoveToLinear(double dest[], int time, bool showAtten=true, bool useEBrake=true);
     void RaiseRailWithCableByLengthAbsulote(int railIndex, int cableIndex, float length);
 };
 

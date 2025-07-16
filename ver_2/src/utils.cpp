@@ -1,4 +1,6 @@
 #include "../include/utils.h"
+#include <iostream>
+#include <string>
 
 /*bool CheckContinue(){
     getchar();

@@ -1,11 +1,13 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <iostream>
-#include <cmath>
-#include <vector>
-#include <string>
-#include <algorithm>
+#include <thread>
+#include <chrono>
+
+// Cross-platform Sleep replacement
+inline void SleepMs(unsigned int milliseconds) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+}
 
 #endif
 

@@ -1,8 +1,15 @@
 #ifndef TeknicNode_H
 #define TeknicNode_H
-#include "../Dependencies/sFoundation20/inc/pubSysCls.h"
+
+#ifdef __linux__
+#include "../Dependencies/linux/sFoundation/inc/inc-pub/pubSysCls.h"
+#else
+#include "../Dependencies/windows/sFoundation20/inc/pubSysCls.h"
+#endif
+
 #include <vector>
 #include <string>
+#include <cstdlib> // for getenv
 
 using namespace std;
 using namespace sFnd;

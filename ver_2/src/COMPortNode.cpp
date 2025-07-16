@@ -1,114 +1,76 @@
 #include "../include/COMPortNode.h"
 #include <iostream>
 #include <thread>
+#include <boost/asio.hpp>
 
-COMPortNode::COMPortNode(bool isOnline){ this->isOnline = isOnline; }
+COMPortNode::COMPortNode(bool isOnline)
+    : isOnline(isOnline), serial(ioContext) {}
 
 bool COMPortNode::SetSerialParams(){
-    if(!this->isOnline) return true;
-    // Set parameters for serial port
-    DCB dcbSerialParams = { 0 }; // Initializing DCB structure
-    dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-    bool Status = GetCommState(this->hComm, &dcbSerialParams); // retreives  the current settings
-    if (Status == false){ cout << "Error in GetCommState()\n"; return false; }
-
-    dcbSerialParams.BaudRate = CBR_57600;// Setting BaudRate
-    dcbSerialParams.ByteSize = 8;         // Setting ByteSize = 8
-    dcbSerialParams.StopBits = ONESTOPBIT;// Setting StopBits = 1
-    dcbSerialParams.Parity   = NOPARITY;  // Setting Parity = None
-
-    SetCommState(this->hComm, &dcbSerialParams);
-    if (Status == false){ cout << "Error! in Setting DCB Structure\n"; return false; }
-    else{
-        printf("   Setting DCB Structure Successful\n");
-        printf("       Baudrate = %d\n", dcbSerialParams.BaudRate);
-        printf("       ByteSize = %d\n", dcbSerialParams.ByteSize);
-        printf("       StopBits = %d\n", dcbSerialParams.StopBits);
-        printf("       Parity   = %d\n", dcbSerialParams.Parity);
-        cout << endl;
+    if (!isOnline) return true;
+    try {
+        serial.set_option(boost::asio::serial_port_base::baud_rate(57600));
+        serial.set_option(boost::asio::serial_port_base::character_size(8));
+        serial.set_option(boost::asio::serial_port_base::stop_bits(
+            boost::asio::serial_port_base::stop_bits::one));
+        serial.set_option(boost::asio::serial_port_base::parity(
+            boost::asio::serial_port_base::parity::none));
+    } catch(const boost::system::system_error& e) {
+        std::cerr << "Error setting serial params: " << e.what() << std::endl;
+        return false;
     }
-
-    // Set timeouts
-    COMMTIMEOUTS timeouts = { 0 };
-    timeouts.ReadIntervalTimeout         = 50;
-    timeouts.ReadTotalTimeoutConstant    = 50;
-    timeouts.ReadTotalTimeoutMultiplier  = 10;
-    timeouts.WriteTotalTimeoutConstant   = 50;
-    timeouts.WriteTotalTimeoutMultiplier = 10;
-
-    if (SetCommTimeouts(this->hComm, &timeouts) == FALSE){ cout << "Error! in Setting Time Outs\n"; return false; }
-    // Set recieve mask                
-    if (!(bool)SetCommMask(this->hComm, EV_RXCHAR)){ cout << "Error! in Setting CommMask\n"; }
-    
     return true;
 }
 
-bool COMPortNode::Connect(string portName){
+bool COMPortNode::Connect(std::string portName){
     if(!this->isOnline) return true;
-    cout << "Connecting to BLE Device on port: " << portName << endl;;
-    const char* cArray = portName.c_str();
-    this->hComm = CreateFile(cArray, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-    if (this->hComm == INVALID_HANDLE_VALUE){ 
-        cout << "Error: " << portName << " cannot be opened.\n"; 
-    } else { 
-        cout << portName << " opened.\n"; 
+    if (!isOnline) return true;
+    try {
+        serial.open(portName);
+    } catch(const boost::system::system_error& e) {
+        std::cerr << "Error opening port " << portName << ": " << e.what() << std::endl;
+        return false;
     }
-    if (!SetSerialParams()) { 
-        return false; 
-    }
-    Sleep(2000);
-    cout << "Connected to BLE Device on port: " << portName << endl;
+    if (!SetSerialParams()) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     return true;
 }
 
 void COMPortNode::Disconnect(){
     if(!this->isOnline) return;
-    this->Send("(z,    )");
-    
-    CloseHandle(this->hComm);
+    if (!isOnline) return;
+    serial.close();
 }
 
-string COMPortNode::Send(string Ard_char){
+std::string COMPortNode::Send(std::string Ard_char){
     if(!this->isOnline) return "";
-    char buffer[8] = {};
-    for(int i = 0; i < 8; i++){
-        buffer[i] = Ard_char[i];
-    }
-    DWORD dNoOfBytesWritten = 0;
-    if (!(bool)WriteFile(this->hComm, buffer, 8, &dNoOfBytesWritten, NULL)){ 
-        cout << "Arduino writing error: " << GetLastError() << endl; 
+    if (!isOnline) return "";
+    std::array<char,8> buffer{};
+    std::copy_n(Ard_char.data(), std::min<size_t>(8, Ard_char.size()), buffer.data());
+    try {
+        boost::asio::write(serial, boost::asio::buffer(buffer));
+    } catch(const boost::system::system_error& e) {
+        std::cerr << "Error writing to serial: " << e.what() << std::endl;
         return "False";
-    }    
-    cout << "Sent: " << Ard_char << endl;
-    return "Succrss";
+    }
+    return "Success";
     // return Read();
     // Read(); // need this?
 }
 
-string COMPortNode::Read(){
+std::string COMPortNode::Read(){
     if(!this->isOnline) return "";
-    DWORD dwEventMask, BytesRead;
-    int i{0};
+    if (!isOnline) return "";
+    std::string msg;
     char tmp;
-    string msg = "";
-
-    bool Status = WaitCommEvent(this->hComm, &dwEventMask, NULL); // wait till brick is ready from ABB
-    if (Status == false){ cout << "Error in setting WaitCommEvent()\n";} //quitType = 'q'; return; }
-    else {
-        auto start = chrono::steady_clock::now();
-        auto end = chrono::steady_clock::now();
-        while(chrono::duration_cast<chrono::milliseconds>(end-start).count()  < 1000){  
-            ReadFile(this->hComm, &tmp, sizeof(tmp), &BytesRead, NULL);
-            if(BytesRead > 0){
-                msg.push_back(tmp);
-                break;
-            }
-            end = chrono::steady_clock::now();
-        }
-        while(BytesRead > 0){
-            ReadFile(this->hComm, &tmp, sizeof(tmp), &BytesRead, NULL);
+    boost::system::error_code ec;
+    // Read at least one character
+    size_t len = serial.read_some(boost::asio::buffer(&tmp,1), ec);
+    if (!ec && len > 0) {
+        msg.push_back(tmp);
+        // Continue reading remaining data
+        while ((len = serial.read_some(boost::asio::buffer(&tmp,1), ec)) && !ec) {
             msg.push_back(tmp);
-            i++;
         }
     }
     return msg;

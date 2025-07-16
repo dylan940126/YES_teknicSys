@@ -68,20 +68,20 @@ void RailController::CalibrationMotor(int index, double currentCmdPos){
 
     while(busyFlag[index]){ // wait for motor busy flag on, ie. update current pos started
         cout << "Waiting for motor " << index << " to home" << endl;
-        this->motorNode.ReadReq("MAIN.homeBusy", busyFlag);
+        bool busy;
+        this->motorNode.ReadReq("MAIN.homeBusy", busy);
+        busyFlag[index] = busy;
     }
 }
 
 vector<int> RailController::GetMotorPosMeasured(){
-    long nErr;
-    bool *actPos = new bool(this->railNumber);
-    vector<int> result;
+    vector<int> result(this->railNumber);
     for(int i = 0; i < this->railNumber; i++){
-        this->motorNode.ReadReq("MAIN.actPos[" + to_string(i + 1) + "]", actPos[i]);
-        cout << "Rail " << i << " position: " << actPos[i] << endl;
-        result.push_back((int)actPos[i]);
+        double actPos;
+        this->motorNode.ReadReq("MAIN.actPos[" + to_string(i + 1) + "]", actPos);
+        result[i] = static_cast<int>(actPos);
+        cout << "Rail " << i << " position: " << result[i] << endl;
     }
-    // vector<int> result(actPos, actPos + sizeof(actPos) / sizeof(actPos[0]));
     return result;
 }
 

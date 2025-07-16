@@ -10,17 +10,18 @@
 #include <fstream>
 #include "../tools/json.hpp"
 #include <assert.h>
-#pragma comment(lib, "User32.lib")
-
-#pragma comment(lib, "ws2_32.lib")
+// Use cross-platform networking standard library
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 
 using json = nlohmann::json;
 using namespace std;
 class DeltaClient{
 private:
-    SOCKET udpSocket;
-    sockaddr_in serverAddr;
+    int udpSocket;
+    struct sockaddr_in serverAddr;
     int railNumber;
     bool isOnline;
     bool isMoveFinished;

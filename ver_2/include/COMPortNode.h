@@ -1,25 +1,26 @@
 #ifndef COMPortNode_H
 #define COMPortNode_H
 
-#include <Windows.h>
 #include <string>
+#include <boost/asio.hpp>
 
-using namespace std;
+// Use Boost.Asio for cross-platform serial port support
 class COMPortNode{
 private:
     bool isOnline;
-    HANDLE hComm;
-    int readTimeout=1000;
-    
+    boost::asio::io_context ioContext;
+    boost::asio::serial_port serial;
+    int readTimeout = 1000;
+
     // set communication port
     bool SetSerialParams();
 public:
     COMPortNode(bool isOnline=false);
 
-    bool Connect(string portName);  
+    bool Connect(std::string portName);  
     void Disconnect();
 
-    string Read();
-    string Send(string Ard_char);
+    std::string Read();
+    std::string Send(std::string Ard_char);
 };
 #endif

@@ -1,0 +1,60 @@
+# Compiled outputs
+build/
+bin/
+temp/
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.exe
+*.out
+*.app
+*.a
+*.lib
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Log files
+*.log
+log.txt
+log/
+
+# Runtime generated files
+lastPos.txt
+traj.csv
+
+# Linux sFoundation compiled artifacts
+Dependencies/linux/sFoundation/sFoundation/libsFoundation20.so
+Dependencies/linux/sFoundation/sFoundation/obj/
+
+# Beckhoff ADS compiled artifacts
+Dependencies/common/ADS/build/
+
+# Other dependency library compiled artifacts
+Dependencies/**/build/
+
+# Test files
+test_*
+test/temp/
+
+# Backup files
+*.bak
+*~
+*.backup
+
+.cache

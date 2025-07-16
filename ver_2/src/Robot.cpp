@@ -1,12 +1,14 @@
 #include "../include/Robot.h"
 #include "../tools/json.hpp"
-#include "../Dependencies/eigen-3.3.7/Eigen/Dense"
+#include "../Dependencies/common/eigen-3.3.7/Eigen/Dense"
 #include "../include/TrajectoryGenerator.h"
 #include <iostream>
 #include <fstream>
 #include <cmath>
 #include <thread>
-#include <conio.h>
+#include <limits>
+#include "../include/utils.h"
+#include <memory>
 
 using json = nlohmann::json;
 
@@ -34,9 +36,9 @@ void Robot::Connect()
     // Init BLE Nodes
     if (this->useGripper)
     {
-        this->gripper = GripperController(this->isOnline, this->useGripper);
-        this->gripper.Connect(this->gripperCommPort);
-        if (!this->gripper.IsConnected())
+        gripper.reset(new GripperController(this->isOnline, this->useGripper));
+        gripper->Connect(this->gripperCommPort);
+        if (!gripper->IsConnected())
         {
             cout << "Error: Gripper not connected." << endl;
             this->isConnected = false;
@@ -46,11 +48,11 @@ void Robot::Connect()
     // Init Brake Motor Nodes
     if (this->useRailBraker || this->useCableBraker)
     {
-        this->brake = BrakeController(this->isOnline);
-        this->brake.UseCableBrake(this->cableMotorBrakeNum);
-        this->brake.UseRailBrake(this->railMotorNum);
-        this->brake.Connect(this->railBrakeCommPort);
-        if (!this->brake.IsConnected())
+        brake.reset(new BrakeController(this->isOnline));
+        brake->UseCableBrake(this->cableMotorBrakeNum);
+        brake->UseRailBrake(this->railMotorNum);
+        brake->Connect(this->railBrakeCommPort);
+        if (!brake->IsConnected())
         {
             cout << "Error: Brake not connected." << endl;
             this->isConnected = false;
@@ -85,9 +87,9 @@ void Robot::Connect()
     if (this->useCableMotor)
     {
         this->cable = CableController(this->isOnline, this->useCableMotor);
-        this->brake.OpenAllCableBrake();
+        brake->OpenAllCableBrake();
         this->cable.Connect(this->cableMotorNum);
-        this->brake.CloseAllCableBrake();
+        brake->CloseAllCableBrake();
         if (!this->cable.IsConnected())
         {
             cout << "Error: Cable motors not connected." << endl;
@@ -98,16 +100,17 @@ void Robot::Connect()
 
 void Robot::Disconnect()
 {
-    if (this->gripper.IsConnected())
-        this->gripper.Disconnect();
-    if (this->brake.IsConnected()){
-        this->brake.CloseAllRailBrake();
-        this->brake.CloseAllCableBrake();
-    if (this->cable.IsConnected())
-        this->cable.Disconnect();
-    if (this->rail.IsConnected())
-        this->rail.Disconnect();
+    if (gripper)
+        gripper->Disconnect();
+    if (brake)
+    {
+        brake->CloseAllRailBrake();
+        brake->CloseAllCableBrake();
     }
+    if (cable.IsConnected())
+        cable.Disconnect();
+    if (rail.IsConnected())
+        rail.Disconnect();
     this->isConnected = false;
 
     if (this->isOnline)
@@ -659,13 +662,14 @@ bool Robot::eBrake(bool cableBrake, bool railBrake)
 {
     if (!useEBrake)
         return true;
-    if (kbhit())
+    if (std::cin.rdbuf()->in_avail() > 0)
     { // Emergency quit during trajectory control
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         this->cable.StopAllMotor();
         if (cableBrake)
-            this->brake.CloseAllCableBrake();
+            this->brake->CloseAllCableBrake();
         if (railBrake)
-            this->brake.CloseAllRailBrake();
+            this->brake->CloseAllRailBrake();
         string userInput;
         cout << endl;
         cout << "================================== Trajectory Stopped!! ==================================" << endl;
@@ -805,8 +809,8 @@ void Robot::RaiseRailWithCableByLengthAbsulote(int railIndex, int cableIndex, fl
                 return;
         }
     }
-    this->brake.OpenCableBrakeByIndex(cableIndex);
-    this->brake.OpenRailBrakeByIndex(railIndex);
+    brake->OpenCableBrakeByIndex(cableIndex);
+    brake->OpenRailBrakeByIndex(railIndex);
 
     double dura = abs(target - this->railOffset[railIndex]) / this->railVelLmt * 1000; // *1000 to change unit to ms
     if (dura <= 200 || dura > 10000)
@@ -868,7 +872,7 @@ void Robot::RaiseRailWithCableByLengthAbsulote(int railIndex, int cableIndex, fl
         double dif = MILLIS_TO_NEXT_FRAME - dur - 1;
         if (dif > 0)
         {
-            Sleep(dif);
+            SleepMs(dif);
         }
     }
 
@@ -878,11 +882,11 @@ void Robot::RaiseRailWithCableByLengthAbsulote(int railIndex, int cableIndex, fl
     //     if (nErr) { cout << "Error: Rail[" << id << "] AdsSyncReadReq: " << nErr << '\n'; break; }
     //     // cout << posNow[railIndex] << endl;
     // }
-    Sleep(50);
+    SleepMs(50);
     cout << "Rail traj done .... \n";
 
-    this->brake.CloseCableBrakeByIndex(cableIndex);
-    this->brake.CloseRailBrakeByIndex(railIndex);
+    brake->CloseCableBrakeByIndex(cableIndex);
+    brake->CloseRailBrakeByIndex(railIndex);
 }
 
 void Robot::SavePosToFile(string filename)
