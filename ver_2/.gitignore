@@ -38,10 +38,6 @@ log/
 lastPos.txt
 traj.csv
 
-# Linux sFoundation compiled artifacts
-Dependencies/linux/sFoundation/sFoundation/libsFoundation20.so
-Dependencies/linux/sFoundation/sFoundation/obj/
-
 # Beckhoff ADS compiled artifacts
 Dependencies/common/ADS/build/
 

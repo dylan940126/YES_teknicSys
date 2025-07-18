@@ -4,8 +4,6 @@ project(TeknicSystem)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_compile_options(-Wall -Wextra -Wpedantic)
-
 find_package(Boost REQUIRED COMPONENTS system thread)
 if(Boost_FOUND)
     message(STATUS "Found Boost: ${Boost_INCLUDE_DIRS}")
@@ -13,23 +11,15 @@ if(Boost_FOUND)
     list(APPEND EXTRA_LIBS ${Boost_LIBRARIES})
 endif()
 
-set(SFOUNDATION_DIR ${CMAKE_SOURCE_DIR}/Dependencies/linux/sFoundation/sFoundation)
+set(SFOUNDATION_DIR ${CMAKE_SOURCE_DIR}/Dependencies/common/sFoundation/sFoundation)
 set(ADS_DIR ${CMAKE_SOURCE_DIR}/Dependencies/common/ADS)
 
-include_directories(
-    ${CMAKE_SOURCE_DIR}/include
-    ${SFOUNDATION_DIR}/inc/inc-pub
-)
+set(BUILD_SHARED_LIBS OFF)
+set(Boost_USE_STATIC_LIBS ON)
+set(Boost_USE_STATIC_RUNTIME ON)
 
-set(SFOUNDATION_LIB ${SFOUNDATION_DIR}/libsFoundation20.so)
-
-if(NOT EXISTS ${SFOUNDATION_LIB})
-    message(STATUS "sFoundation library does not exist, building automatically...")
-    execute_process(
-        COMMAND make
-        WORKING_DIRECTORY ${SFOUNDATION_DIR}
-    )
-endif()
+add_subdirectory(${SFOUNDATION_DIR} sFoundation_build)
+add_subdirectory(${ADS_DIR} ADSbuild)
 
 set(SOURCES
     src/BrakeController.cpp
@@ -43,13 +33,9 @@ set(SOURCES
     src/Robot.cpp
     src/TeknicNode.cpp
     src/TrajectoryGenerator.cpp
+    src/TwincatADSNode.cpp
     src/utils.cpp
 )
-
-set(SOURCES ${SOURCES} src/TwincatADSNode.cpp)
-add_subdirectory(${ADS_DIR} ADSbuild)
-list(APPEND EXTRA_LIBS ads)
-include_directories(${ADS_DIR}/AdsLib/include)
 
 add_executable(main ${SOURCES})
 
@@ -58,27 +44,16 @@ set_target_properties(main PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
 )
 
-target_link_libraries(main
-    ${SFOUNDATION_LIB}
-    ${EXTRA_LIBS}
-    pthread
-    rt
-    dl
+target_link_libraries(main PRIVATE
+    sFoundation
+    ads
 )
+if(UNIX)
+    target_link_libraries(main PRIVATE pthread rt dl)
+endif()
 
-add_custom_command(TARGET main POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${SFOUNDATION_DIR}/libsFoundation20.so
-        ${CMAKE_BINARY_DIR}/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${SFOUNDATION_DIR}/MNuserDriver20.xml
-        ${CMAKE_BINARY_DIR}/
-)
-
-# 安裝目標
 install(TARGETS main DESTINATION bin)
 install(FILES 
-    ${SFOUNDATION_DIR}/libsFoundation20.so
     ${SFOUNDATION_DIR}/MNuserDriver20.xml
     DESTINATION lib
 )

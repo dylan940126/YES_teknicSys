@@ -1,11 +1,7 @@
 #ifndef TeknicNode_H
 #define TeknicNode_H
 
-#ifdef __linux__
-#include "../Dependencies/linux/sFoundation/inc/inc-pub/pubSysCls.h"
-#else
-#include "../Dependencies/windows/sFoundation20/inc/pubSysCls.h"
-#endif
+#include "../Dependencies/common/sFoundation/inc/inc-pub/pubSysCls.h"
 
 #include <vector>
 #include <string>
