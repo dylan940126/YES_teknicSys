@@ -208,8 +208,13 @@ void Robot::UpdateModelFromFile(string filename, bool reconnect)
         this->railMotorCableMotorOffset = model.value("railMotorCableMotorOffset", 2);
         this->absTrqLmt = model.value("absTrqLmt", 10);
         this->endEffToGroundOffset = model.value("endEffToGroundOffset", -0.28);
-        this->cameraOffset[0] = model.value("cameraOffset.x", -0.2383);
-        this->cameraOffset[1] = model.value("cameraOffset.y", -0.09666);
+        if (model.contains("cameraOffset") && model["cameraOffset"].contains("x") && model["cameraOffset"].contains("y")) {
+            this->cameraOffset[0] = model["cameraOffset"]["x"].get<double>();
+            this->cameraOffset[1] = model["cameraOffset"]["y"].get<double>();
+        } else {
+            this->cameraOffset[0] = 0.0;
+            this->cameraOffset[1] = 0.0;
+        }
         this->targetTrq = model.value("targetTorque", -2.5);
         this->cableMotorScale = model.value("cableMotorScale", 509295);
         this->railMotorScale = model.value("railMotorScale", 38400000);
@@ -660,8 +665,8 @@ bool Robot::GetMoveToBrickPos(SOCKET udpSocket, sockaddr_in serverAddr, double o
     }
 
     try {
-        offsets[1] = jsonData["x"].get<double>();
-        offsets[0] = jsonData["y"].get<double>();
+        offsets[0] = -jsonData["y"].get<double>();
+        offsets[1] = -jsonData["x"].get<double>();
         offsets[2] = 0.5 - jsonData["z"].get<double>();
         angle = jsonData["angle"].get<double>();
 
