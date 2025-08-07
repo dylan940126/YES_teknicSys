@@ -31,9 +31,9 @@ def get_orientation(mask: np.ndarray) -> float:
     # Calculate the minimum area rectangle
     (_, (w, h), angle) = cv2.minAreaRect(mask)
     if w < h:
-        angle += 90
-        if angle > 90:
-            angle -= 180
+        angle -= 90
+    if angle < 0:
+        angle += 180
     return angle
 
 def get_simple_mask(mask: np.ndarray) -> np.ndarray:

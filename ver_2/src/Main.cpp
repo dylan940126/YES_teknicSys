@@ -1366,6 +1366,7 @@ void OperationMode(){
         }else if(userInput == "9"){ // auto aiming mode
             WSADATA wsaData;
             double* camera_offset = robot.GetCameraOffset(); // camera offset from end effector
+            cout << "camera offset: x=" << camera_offset[0] << ", y=" << camera_offset[1] << endl;
             if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
                 cout << "Failed to initialize Winsock" << endl;
                 return;
@@ -1424,7 +1425,7 @@ void OperationMode(){
                     robot.MoveToParaBlend(goalPos, true);
                     robot.gripper.Rotate(-angle);
                     Sleep(1000);
-                    goalPos[2] += -0.185;
+                    goalPos[2] += -0.17;
                     robot.MoveToParaBlend(goalPos, 2000, true);
                     robot.gripper.Close();
                     Sleep(1000);
@@ -1453,12 +1454,13 @@ void OperationMode(){
                     goalPos[1] += y + camera_offset[1];
                     goalPos[2] += -0.30;
                     robot.MoveToParaBlend(goalPos, true);
+                    Sleep(1000);
                     
-                    goalPos[2] += -0.185;
+                    goalPos[2] += -0.17;
                     robot.MoveToParaBlend(goalPos, 2000, true);
                     robot.gripper.Open();
                     Sleep(1500);
-                    goalPos[2] += 0.185;
+                    goalPos[2] += 0.17;
                     robot.MoveToParaBlend(goalPos, true);
                     copy(robot.homePos, robot.homePos+6, begin(goalPos)); // home x,y,z position
                     robot.MoveToParaBlend(goalPos, true);
